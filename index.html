@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delivery app</title>
+<style>
+  :root {
+    --paper: #F1F5EE;
+    --card: #FFFFFF;
+    --ink: #16241B;
+    --muted: #55655A;
+    --leaf: #1E6A44;
+    --saffron: #F4B81A;
+    --line: #C9D5CB;
+    --alert: #A8271C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  header, main { max-width: 60rem; margin: 0 auto; padding: 0 1.25rem; }
+  header { padding-top: 2.5rem; padding-bottom: 1.5rem; }
+  h1 { margin: 0 0 1rem; font-size: 2.5rem; line-height: 1.1; letter-spacing: -0.02em; }
+  h2 { margin: 0 0 0.75rem; font-size: 1.25rem; }
+  h3 { margin: 1.25rem 0 0.25rem; font-size: 1rem; color: var(--leaf); }
+  h3:first-of-type { margin-top: 0; }
+
+  label { font-weight: 600; margin-right: 0.5rem; }
+  input {
+    font: inherit; color: inherit;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--card);
+  }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    padding: 0.3rem 0.9rem;
+    color: #fff; background: var(--leaf);
+    border: 0; border-radius: 6px;
+  }
+  button:hover { background: #17573A; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  :focus-visible { outline: 3px solid var(--saffron); outline-offset: 2px; }
+
+  main {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+    align-items: start; padding-bottom: 3rem;
+  }
+  @media (max-width: 44rem) { main { grid-template-columns: 1fr; } }
+
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem; }
+  .stack { display: grid; gap: 1.5rem; }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  .dish {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.5rem 0; border-top: 1px solid var(--line);
+  }
+  .dish .name { flex: 1; }
+  .dish .price { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  /* Orders look like kitchen tickets. */
+  .ticket {
+    padding: 0.6rem 0.9rem; margin-bottom: 0.6rem;
+    background: #FFF9E6;
+    border-left: 6px solid var(--saffron);
+    border-bottom: 2px dashed var(--line);
+  }
+  .ticket strong { display: block; }
+  .ticket small, .note small { color: var(--muted); }
+  .ticket .warn { color: var(--alert); }
+
+  .note { padding: 0.5rem 0; border-top: 1px solid var(--line); }
+  .note:first-child { border-top: 0; padding-top: 0; }
+
+  .empty { color: var(--muted); margin: 0; }
+  .error { color: var(--alert); margin: 0; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Delivery app</h1>
+  <label for="customer">Ordering as</label>
+  <input id="customer" value="Ana" autocomplete="off">
+</header>
+
+<main>
+  <section aria-labelledby="menu-title">
+    <h2 id="menu-title">Menu</h2>
+    <div id="menu"><p class="empty">Loading the menu…</p></div>
+  </section>
+
+  <div class="stack">
+    <section aria-labelledby="orders-title">
+      <h2 id="orders-title">Orders</h2>
+      <div id="orders" aria-live="polite"><p class="empty">Loading orders…</p></div>
+    </section>
+
+    <section aria-labelledby="notes-title">
+      <h2 id="notes-title">Notifications</h2>
+      <div id="notifications" aria-live="polite"><p class="empty">Loading notifications…</p></div>
+    </section>
+  </div>
+</main>
+
+<script>
+  // Each list comes from a different microservice. The paths are relative,
+  // and nginx forwards them (see nginx.conf).
+  const API = {
+    restaurants: "/api/restaurants",
+    orders: "/api/orders",
+    notifications: "/api/notifications",
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // Small helper to build elements without innerHTML (safe with user input).
+  function el(tag, props = {}, ...children) {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+  }
+
+  function message(target, text, kind = "empty") {
+    $(target).replaceChildren(el("p", { className: kind, textContent: text }));
+  }
+
+  async function getJson(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  }
+
+  async function loadMenu() {
+    try {
+      const restaurants = await getJson(API.restaurants);
+      $("menu").replaceChildren(...restaurants.flatMap((r) => [
+        el("h3", { textContent: r.name }),
+        el("ul", {}, ...r.menu.map((item) =>
+          el("li", { className: "dish" },
+            el("span", { className: "name", textContent: item.name }),
+            el("span", { className: "price", textContent: `${item.price.toFixed(2)} €` }),
+            el("button", {
+              textContent: "Order",
+              ariaLabel: `Order ${item.name} from ${r.name}`,
+              onclick: (event) => placeOrder(event.target, r.id, item.id),
+            }),
+          ))),
+      ]));
+    } catch {
+      message("menu", "Can't reach the restaurants service. Check that its pod is running.", "error");
+    }
+  }
+
+  async function loadOrders() {
+    try {
+      const orders = await getJson(API.orders);
+      if (orders.length === 0) return message("orders", "No orders yet. Pick something from the menu.");
+      $("orders").replaceChildren(...orders.slice().reverse().map((o) =>
+        el("div", { className: "ticket" },
+          el("strong", { textContent: `#${o.id} ${o.item}` }),
+          el("small", { textContent: `${o.restaurant}, for ${o.customer}, ${o.price.toFixed(2)} €` }),
+          o.notified ? "" : el("small", { className: "warn", textContent: " (customer not notified)" }),
+        )));
+    } catch {
+      message("orders", "Can't reach the orders service. Check that its pod is running.", "error");
+    }
+  }
+
+  async function loadNotifications() {
+    try {
+      const notes = await getJson(API.notifications);
+      if (notes.length === 0) return message("notifications", "Nothing sent yet.");
+      $("notifications").replaceChildren(...notes.slice().reverse().map((n) =>
+        el("div", { className: "note" },
+          el("div", { textContent: n.message }),
+          el("small", { textContent: new Date(n.sent_at).toLocaleTimeString() }),
+        )));
+    } catch {
+      message("notifications", "Can't reach the notifications service. Check that its pod is running.", "error");
+    }
+  }
+
+  async function placeOrder(button, restaurantId, itemId) {
+    button.disabled = true;
+    try {
+      const response = await fetch(API.orders, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurant_id: restaurantId,
+          item_id: itemId,
+          customer: $("customer").value.trim() || "Guest",
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${response.status}`);
+      }
+    } catch (error) {
+      alert(`The order was not placed: ${error.message}`);
+    } finally {
+      button.disabled = false;
+      refresh();
+    }
+  }
+
+  function refresh() {
+    loadOrders();
+    loadNotifications();
+  }
+
+  loadMenu();
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
