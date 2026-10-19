@@ -1,0 +1,26 @@
+# Defaults for the UI, safe for a local kind cluster. Override per environment
+# with -f values-<env>.yaml, and set the image owner with --set image.username=...
+nameOverride: ""
+fullnameOverride: ""        # empty -> the chart name "ui".
+
+image:
+  username: davidn14
+  repository: delivery-app-ui
+  tag: v1
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+service:
+  type: ClusterIP           # kind: port-forward. Cloud: LoadBalancer.
+
+# Backend base URLs the nginx config proxies /api/... to. Defaults assume the
+# three services keep their stable chart-name Service names in the same
+# namespace; override if you renamed them (fullnameOverride) or split namespaces.
+backends:
+  restaurants: "http://restaurants:8000"
+  orders: "http://orders:8000"
+  notifications: "http://notifications:8000"
+
+# Applied to the container when set (staging/prod fill this in).
+resources: {}

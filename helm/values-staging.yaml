@@ -1,0 +1,14 @@
+# Staging: exposed via a LoadBalancer, with modest resource requests/limits.
+image:
+  tag: staging
+
+service:
+  type: LoadBalancer
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi

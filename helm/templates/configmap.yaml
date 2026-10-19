@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ui.fullname" . }}-nginx
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    {{- include "ui.nginxConf" . | nindent 4 }}

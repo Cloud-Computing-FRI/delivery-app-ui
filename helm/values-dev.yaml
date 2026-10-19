@@ -1,0 +1,6 @@
+# Development: reached by port-forward.
+image:
+  tag: dev
+
+service:
+  type: ClusterIP
